@@ -1,8 +1,15 @@
-local buffer = {}
-local bufferSize = 5
-local delay = 5
-local reversed = false
-local lineOffset = 0
+local moonConsole = {}
+moonConsole._Commands = {}
+moonConsole._Internal = {
+    strBuffer = {},
+    pageSize = 5,
+    delay = 2,
+    reversed = false,
+    lineOffset = 0
+}
+moonConsole._VERSION = '1.0'
+require('lfs')
+
 
 function main()
     local gxtBuffer = {}
@@ -10,28 +17,45 @@ function main()
     local enabled = false
     local vkeys = require('vkeys')
 
-
     while true do
         wait(0)
         if isKeyDown(vkeys.VK_F1) then
             while isKeyDown(vkeys.VK_F1) do wait(0) end
             if not enabled then
-                for i = bufferSize, 1, -1 do
+                for i = moonConsole._Internal.pageSize, 1, -1 do
                     gxtBuffer[i] = {getFreeGxtKey(), nil}
                 end
                 time = os.time() - 10
                 enabled = true
+                local dir = getWorkingDirectory() .. '\\lib\\Moon Console'
+                if not doesDirectoryExist(dir) then
+                    createDirectory(dir)
+                end
+                for file in lfs.dir(dir) do
+                    if file:match('^[^%.]+.lua$') then
+                        local module = require('Moon Console.' .. file:sub(1, -5))
+                        if module then
+                            if module._Commands then
+                                if type(module._Commands) == 'table' then
+                                    for k in pairs(module._Commands) do
+                                        moonConsole._Commands[k] = module._Commands[k]
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
             else
                 enabled = false
-                buffer = {}
+                moonConsole._Internal.strBuffer = {}
                 gxtBuffer = {}
-                lineOffset = 0
+                moonConsole._Internal.lineOffset = 0
             end
         end
         
         if enabled then
             local color = {}
-            time = processAndRead(time, lineOffset)
+            time = processAndRead(time, moonConsole._Internal.lineOffset)
 
             local function wasKeyPressedAndReleased(...)
                 keys = {...}
@@ -47,89 +71,69 @@ function main()
                 for i = 1, #keys do
                     while isKeyDown(keys[i]) do
                         wait(0)
-                        processAndShow(bufferSize, buffer, gxtBuffer, color)
-                        time = processAndRead(time, lineOffset)
+                        processAndShow(moonConsole._Internal.pageSize, moonConsole._Internal.strBuffer, gxtBuffer, color)
+                        time = processAndRead(time, moonConsole._Internal.lineOffset)
                     end
                 end
                 return true
             end
 
             if wasKeyPressedAndReleased(vkeys.VK_PRIOR) then
-                if reversed then
-                    if lineOffset > 0 then
-                        lineOffset = lineOffset - bufferSize
+                if moonConsole._Internal.reversed then
+                    if moonConsole._Internal.lineOffset > 0 then
+                        moonConsole._Internal.lineOffset = moonConsole._Internal.lineOffset - moonConsole._Internal.pageSize
                     end
                 else
-                    lineOffset = lineOffset + bufferSize
+                    moonConsole._Internal.lineOffset = moonConsole._Internal.lineOffset + moonConsole._Internal.pageSize
                 end
                 time = os.time() - 10
-                time = processAndRead(time, lineOffset)
-                processAndShow(bufferSize, buffer, gxtBuffer, color)
+                time = processAndRead(time, moonConsole._Internal.lineOffset)
+                processAndShow(moonConsole._Internal.pageSize, moonConsole._Internal.strBuffer, gxtBuffer, color)
             elseif wasKeyPressedAndReleased(vkeys.VK_NEXT) then
-                if reversed then
-                    lineOffset = lineOffset + bufferSize
+                if moonConsole._Internal.reversed then
+                    moonConsole._Internal.lineOffset = moonConsole._Internal.lineOffset + moonConsole._Internal.pageSize
                 else
-                    if lineOffset > 0 then
-                        lineOffset = lineOffset - bufferSize
+                    if moonConsole._Internal.lineOffset > 0 then
+                        moonConsole._Internal.lineOffset = moonConsole._Internal.lineOffset - moonConsole._Internal.pageSize
                     end
                 end
                 time = os.time() - 10
-                time = processAndRead(time, lineOffset)
-                processAndShow(bufferSize, buffer, gxtBuffer, color)
+                time = processAndRead(time, moonConsole._Internal.lineOffset)
+                processAndShow(moonConsole._Internal.pageSize, moonConsole._Internal.strBuffer, gxtBuffer, color)
             elseif wasKeyPressedAndReleased(vkeys.VK_HOME) then
-                if reversed then
-                    lineOffset = 0    
+                if moonConsole._Internal.reversed then
+                    moonConsole._Internal.lineOffset = 0    
                 else
-                    lineOffset = 'END'
+                    moonConsole._Internal.lineOffset = 'END'
                 end
                 time = os.time() - 10
-                time = processAndRead(time, lineOffset)
-                processAndShow(bufferSize, buffer, gxtBuffer, color)
+                time = processAndRead(time, moonConsole._Internal.lineOffset)
+                processAndShow(moonConsole._Internal.pageSize, moonConsole._Internal.strBuffer, gxtBuffer, color)
             elseif wasKeyPressedAndReleased(vkeys.VK_END) then
-                if reversed then
-                    lineOffset = 'END'    
+                if moonConsole._Internal.reversed then
+                    moonConsole._Internal.lineOffset = 'END'    
                 else
-                    lineOffset = 0
+                    moonConsole._Internal.lineOffset = 0
                 end
                 time = os.time() - 10
-                time = processAndRead(time, lineOffset)
-                processAndShow(bufferSize, buffer, gxtBuffer, color)
+                time = processAndRead(time, moonConsole._Internal.lineOffset)
+                processAndShow(moonConsole._Internal.pageSize, moonConsole._Internal.strBuffer, gxtBuffer, color)
             end
 
             if isKeyDown(vkeys.VK_TAB) then
                 while isKeyDown(vkeys.VK_TAB) do wait(0) end
                 local input = ''
                 local memory = require('memory')
-                local inputGxt = bufferSize + 1
+                local inputGxt = moonConsole._Internal.pageSize + 1
                 gxtBuffer[inputGxt] = {getFreeGxtKey(), {255, 255, 255}}
-                buffer[inputGxt] = {nil, nil}
+                moonConsole._Internal.strBuffer[inputGxt] = {nil, nil}
                 setPlayerControl(playerHandle, false)
                 attachCameraToChar(playerPed, 0.0, -0.5, 2.0, 0.0, 90.0, -180.0, 0.0, 2)
 
                 while true do
                     wait(0)
                     local key
-                    time = processAndRead(time, lineOffset)
-                    local function wasKeyPressedAndReleased(...)
-                        keys = {...}
-                        for i = 1, #keys do
-                            if not isKeyDown(keys[i]) then
-                                if keys[i] ~= nil then
-                                    return false
-                                else
-                                    print('(error) key expected, got nil')
-                                end
-                            end
-                        end
-                        for i = 1, #keys do
-                            while isKeyDown(keys[i]) do
-                                wait(0)
-                                processAndShow(bufferSize, buffer, gxtBuffer, color)
-                                time = processAndRead(time, lineOffset)
-                            end
-                        end
-                        return true
-                    end
+                    time = processAndRead(time, moonConsole._Internal.lineOffset)
                     
                     if wasKeyPressed(memory.read(0x00969110, 1, false)) and isKeyDown(vkeys.VK_SHIFT) then
                         key = string.upper(memory.tostring(0x00969110, 1, false))
@@ -144,86 +148,93 @@ function main()
                         input = input:sub(1, -2)
                     elseif wasKeyPressedAndReleased(vkeys.VK_TAB) then
                         input = nil
-                        buffer[inputGxt][1] = nil
+                        moonConsole._Internal.strBuffer[inputGxt][1] = nil
                         break
                     elseif wasKeyPressedAndReleased(vkeys.VK_RETURN) then
-                        buffer[inputGxt][1] = nil
+                        moonConsole._Internal.strBuffer[inputGxt][1] = nil
                         onCommandRequest(input)
+                        for i = moonConsole._Internal.pageSize, 1, -1 do
+                            if not gxtBuffer[i] then
+                                gxtbuffer[i] = {getFreeGxtKey(), nil} -- attempt to index (nil)
+                            else
+                                gxtBuffer[i][1] = getFreeGxtKey()
+                            end
+                        end
                         input = nil
                         time = os.time() - 10
-                        time = processAndRead(time, lineOffset)
-                        for i = bufferSize, 1, -1 do
-                            gxtBuffer[i][1] = getFreeGxtKey()
-                        end
+                        time = processAndRead(time, moonConsole._Internal.lineOffset)
+                        --print(moonConsole._Internal.pageSize)
                         break
+                    elseif wasKeyPressedAndReleased(vkeys.VK_CONTROL, vkeys.VK_V) then key = getClipboardText()
+                    elseif wasKeyPressedAndReleased(vkeys.VK_CONTROL, vkeys.VK_C) then setClipboardText(input)
                     elseif wasKeyPressedAndReleased(vkeys.VK_OEM_PERIOD) then key = '.'
                     elseif wasKeyPressedAndReleased(vkeys.VK_OEM_COMMA) then key = ','
                     elseif wasKeyPressedAndReleased(vkeys.VK_OEM_MINUS) then key = '-'
-                    elseif wasKeyPressedAndReleased(vkeys.VK_OEM_PLUS, vkeys.VK_SHIFT) then key = '='
-                    elseif wasKeyPressedAndReleased(vkeys.VK_OEM_PLUS) then key = '+'
+                    elseif wasKeyPressedAndReleased(vkeys.VK_OEM_PLUS, vkeys.VK_SHIFT) then key = '+'
+                    elseif wasKeyPressedAndReleased(vkeys.VK_OEM_PLUS) then key = '='
                     elseif wasKeyPressedAndReleased(vkeys.VK_OEM_7) then key = "'"
                     elseif wasKeyPressedAndReleased(vkeys.VK_PRIOR) then
-                        if reversed then
-                            if lineOffset > 0 then
-                                lineOffset = lineOffset - bufferSize
+                        if moonConsole._Internal.reversed then
+                            if moonConsole._Internal.lineOffset > 0 then
+                                moonConsole._Internal.lineOffset = moonConsole._Internal.lineOffset - moonConsole._Internal.pageSize
                             end
                         else
-                            lineOffset = lineOffset + bufferSize
+                            moonConsole._Internal.lineOffset = moonConsole._Internal.lineOffset + moonConsole._Internal.pageSize
                         end
                         time = os.time() - 10
-                        time = processAndRead(time, lineOffset)
-                        processAndShow(bufferSize, buffer, gxtBuffer, color)
+                        time = processAndRead(time, moonConsole._Internal.lineOffset)
+                        processAndShow(moonConsole._Internal.pageSize, moonConsole._Internal.strBuffer, gxtBuffer, color)
                     elseif wasKeyPressedAndReleased(vkeys.VK_NEXT) then
-                        if reversed then
-                            lineOffset = lineOffset + bufferSize
+                        if moonConsole._Internal.reversed then
+                            moonConsole._Internal.lineOffset = moonConsole._Internal.lineOffset + moonConsole._Internal.pageSize
                         else
-                            if lineOffset > 0 then
-                                lineOffset = lineOffset - bufferSize
+                            if moonConsole._Internal.lineOffset > 0 then
+                                moonConsole._Internal.lineOffset = moonConsole._Internal.lineOffset - moonConsole._Internal.pageSize
                             end
                         end
                         time = os.time() - 10
-                        time = processAndRead(time, lineOffset)
-                        processAndShow(bufferSize, buffer, gxtBuffer, color)
+                        time = processAndRead(time, moonConsole._Internal.lineOffset)
+                        processAndShow(moonConsole._Internal.pageSize, moonConsole._Internal.strBuffer, gxtBuffer, color)
                     elseif wasKeyPressedAndReleased(vkeys.VK_HOME) then
-                        if reversed then
-                            lineOffset = 0    
+                        if moonConsole._Internal.reversed then
+                            moonConsole._Internal.lineOffset = 0    
                         else
-                            lineOffset = 'END'
+                            moonConsole._Internal.lineOffset = 'END'
                         end
                         time = os.time() - 10
-                        time = processAndRead(time, lineOffset)
-                        processAndShow(bufferSize, buffer, gxtBuffer, color)
+                        time = processAndRead(time, moonConsole._Internal.lineOffset)
+                        processAndShow(moonConsole._Internal.pageSize, moonConsole._Internal.strBuffer, gxtBuffer, color)
                     elseif wasKeyPressedAndReleased(vkeys.VK_END) then
-                        if reversed then
-                            lineOffset = 'END'    
+                        if moonConsole._Internal.reversed then
+                            moonConsole._Internal.lineOffset = 'END'    
                         else
-                            lineOffset = 0
+                            moonConsole._Internal.lineOffset = 0
                         end
                         time = os.time() - 10
-                        time = processAndRead(time, lineOffset)
-                        processAndShow(bufferSize, buffer, gxtBuffer, color)
+                        time = processAndRead(time, moonConsole._Internal.lineOffset)
+                        processAndShow(moonConsole._Internal.pageSize, moonConsole._Internal.strBuffer, gxtBuffer, color)
                     end
 
                     if key then
                         input = input .. key
                     end
                     if input:sub(-1) == ' ' then
-                        buffer[inputGxt][1] = input:sub(1, -2)
+                        moonConsole._Internal.strBuffer[inputGxt][1] = input:sub(1, -2)
                     else
-                        buffer[inputGxt][1] = input
+                        moonConsole._Internal.strBuffer[inputGxt][1] = input
                     end
-                    if buffer[inputGxt][1] ~= nil then
-                        setGxtEntry(gxtBuffer[inputGxt][1], buffer[inputGxt][1])
+                    if moonConsole._Internal.strBuffer[inputGxt][1] ~= nil then
+                        setGxtEntry(gxtBuffer[inputGxt][1], moonConsole._Internal.strBuffer[inputGxt][1])
                     end
-                    processAndShow(bufferSize, buffer, gxtBuffer, color)
+                    processAndShow(moonConsole._Internal.pageSize, moonConsole._Internal.strBuffer, gxtBuffer, color)
                 end
                 wait(100)
-                buffer[inputGxt] = nil
+                moonConsole._Internal.strBuffer[inputGxt] = nil
                 gxtBuffer[inputGxt][1] = nil
                 setPlayerControl(playerHandle, true)
                 restoreCamera()
             end
-            processAndShow(bufferSize, buffer, gxtBuffer, color)
+            processAndShow(moonConsole._Internal.pageSize, moonConsole._Internal.strBuffer, gxtBuffer, color)
         end
     end
 end
@@ -236,76 +247,96 @@ function onScriptTerminate(script, quitGame)
 end
 
 function onCommandRequest(cmd)
-    if cmd == nil or cmd == '' then return end
-    local args
-    local is_args = true
+    if cmd == nil then return end
+    if cmd == '' then return end
+    local command = string.match(cmd, '^([^ (]+)')
+    local commandHandler = moonConsole._Commands[command]
+    if command == nil then return end
+    if command == '' then return end
 
-    local function checkArgs(cmd, str, type)
-        if string.match(cmd, str) then
-            if type == 0 then args = string.match(cmd, "%('?(.-)'?%)") -- Anything between parenthesis
-            elseif type == 1 then args = string.match(cmd, "%('?(%d+)'?%)") -- Any number between parenthesis
-            --elseif type == 3 then args = string.match(cmd, "%w+%s(%d+)")
-            end
-            if args == nil and type ~= 2 then -- Type 2 = no arguments needed
-                print('(error) Arguments missing')
-                is_args = false
-                return false
+    if command == 'help' then
+        local cmds = ''
+        for key, value in pairs(moonConsole._Commands) do
+            --local args = value.commandHelp or value.funcArguments or value.argshints or value.arguments or '...'
+            local args
+            if value.commandHelp then
+                args = value.commandHelp
+            elseif value.funcArguments then
+                args = value.funcArguments
+            elseif unpack(value.argshints) then
+                args = value.argshints
+            elseif unpack(value.arguments) then
+                args = value.arguments
             else
-                return true
+                args = '...'
+            end
+            if type(args) == 'table' then
+                local tmp = ''
+                for k, v in pairs(args) do
+                    tmp = tmp .. v
+                end
+                args = tmp
+                if args == '' then
+                    args = nil
+                end
+            end
+            if args == 'nil' then
+                args = '...'
+            end
+
+            args = commandHandler.commandHandling == false and '[' .. args .. ']' or '<' .. args .. '>'
+            cmds = cmds .. value.name .. args .. ', '
+        end
+        cmds = cmds:sub(1, -3)
+        return print('Commands:', cmds)
+    end
+
+    if commandHandler ~= nil then
+        if commandHandler.func ~= nil then
+            if type(commandHandler.func) == 'function' then
+                if commandHandler.commandHandling == false then -- No arguments required. Just sends the raw arguments (default)
+                    cmd = cmd:sub(#command + 1)
+                elseif commandHandler.commandHandling == 0 then -- Arguments required. Match anything between parenthesis or spaces
+                    cmd = cmd:sub(1, #command)
+                    local firstChar = cmd:sub(1, 1)
+                    local lastChar = cmd:sub(#cmd)
+
+                    if firstChar == '(' and lastChar == ')' then
+                        cmd = cmd:sub(2, -1 - 1)
+                    elseif firstChar == ' ' then
+                        cmd = cmd:sub(2)
+                    else
+                        return print('(error) Invalid syntax')
+                    end
+                    if #cmd == 0 then
+                        return print('(error) Invalid syntax')
+                    end
+
+                end
+
+                res = commandHandler.func(cmd)
+
+                if res ~= nil then
+                    if res._setValue ~= nil then
+                        if type(res._setValue) == 'table' then
+                            for key, value in pairs(res._setValue) do
+                                if moonConsole._Internal[key] ~= nil then
+                                    moonConsole._Internal[key] = value
+                                end
+                            end
+                        end
+                    end
+                end
             end
         end
-    end
-
-    if checkArgs(cmd, 'print', 0) then print(args)
-    elseif checkArgs(cmd, 'veh', 1) then createVehicle(args)
-    elseif checkArgs(cmd, 'weap', 1) then createWeapon(args)
-    elseif checkArgs(cmd, 'hp', 1) then setCharHealth(playerPed, args)
-    elseif checkArgs(cmd, 'reloadall', 2) then print('\nReloading ALL Lua scripts\n'); reloadScripts()
-    elseif checkArgs(cmd, 'lines', 2) then local lines = 0; for l in io.lines('moonloader/moonloader.log') do lines = lines + 1 end; print(lines..' lines')
-    elseif checkArgs(cmd, 'logsize', 2) then local f = io.input('moonloader/moonloader.log'); print(f:seek('end')..' bytes')
-    elseif checkArgs(cmd, 'clearlog', 2) then io.open('moonloader/moonloader.log', 'w'):close()
-    elseif checkArgs(cmd, 'updaterate', 1) then delay = tonumber(args)
-    elseif checkArgs(cmd, 'pagesize', 1) then bufferSize = tonumber(args)
-    elseif checkArgs(cmd, 'reversed', 2) then reversed = not reversed
-    elseif checkArgs(cmd, 'help', 2) then print('Commands: print(str), veh(int), weap(int), hp(int)'); print('reloadall, lines, logsize, clearlog, updaterate(int), pagesize(int), help')
-    elseif is_args then print('(error) Command not found')
+    else
+        print('(error) No command named "' .. command .. '"')
     end
 end
 
-function createWeapon(id)
-    local model = getWeapontypeModel(id)
-    if isModelAvailable(model) then
-        requestModel(model)
-        loadAllModelsNow()
-        giveWeaponToChar(playerPed, id, 99999)
-        markModelAsNoLongerNeeded(model)
-    else print('(error) Weapon does not exists') end
-end
-
-function createVehicle(id)
-    if isModelAvailable(id) then
-        requestModel(id)
-        loadAllModelsNow()
-        local x, y, z = getCharCoordinates(playerPed)
-        local car
-        if isCharInAnyCar(playerPed) then
-            car = getCarCharIsUsing(playerPed)
-            warpCharFromCarToCoord(playerPed, x, y, z)
-            deleteCar(car)
-        end
-        car = createCar(id, x, y, z)
-        setCarHeading(car, getCharHeading(playerPed))
-        warpCharIntoCar(playerPed, car)
-        wait(50)
-        if isThisModelAPlane(id) then setCarCoordinates(car, x, y, z + 400.0) end
-        --setCarCoordinatesNoOffset(car, x, y, z)
-        markModelAsNoLongerNeeded(id)
-        markCarAsNoLongerNeeded(car)
-    else print('(error) Vehicle does not exists') end
-end
 
 function processAndRead(time, offset)
-    if os.time() > time + delay then
+    if os.time() >= time + moonConsole._Internal.delay then
         --[[
         local newBuffer -- doesnt work??
         io.input('moonloader/moonloader.log')
@@ -313,14 +344,14 @@ function processAndRead(time, offset)
             wait(0)
             local lines = io.read()
             if lines == nil then break end
-            if buffer[0] == nil then buffer[0] = lines end
+            if moonConsole._Internal.strBuffer[0] == nil then moonConsole._Internal.strBuffer[0] = lines end
             newBuffer = lines
         end
-        for i = bufferSize, 1, -1 do
-            buffer[i] = buffer[i - 1]
-            print(buffer[i])
+        for i = moonConsole._Internal.pageSize, 1, -1 do
+            moonConsole._Internal.strBuffer[i] = moonConsole._Internal.strBuffer[i - 1]
+            print(moonConsole._Internal.strBuffer[i])
         end
-        buffer[0] = newBuffer
+        moonConsole._Internal.strBuffer[0] = newBuffer
         ]]--
         local lines = getLinesFromFile('moonloader/moonloader.log')
         local numb = 0
@@ -328,7 +359,7 @@ function processAndRead(time, offset)
             if type(offset) == 'string' then
                 if offset == 'END' then
                     numb = -#lines
-                    lineOffset = #lines
+                    moonConsole._Internal.lineOffset = #lines
                 end
             else
                 if offset >= 0 then
@@ -336,15 +367,15 @@ function processAndRead(time, offset)
                 end
                 if offset >= #lines then
                     numb = -#lines
-                    lineOffset = #lines
+                    moonConsole._Internal.lineOffset = #lines
                 end
             end
         end
-        for i = bufferSize, 1, -1 do
-            buffer[i] = {lines[#lines - numb], nil}
-            --if buffer[i] ~= nil then
-            --    --buffer[i] = string.gsub(buffer[i], "%[%d%d:%d%d:%d%d%.%d+%]%s+", "", 1)
-            --    buffer[i] = string.sub(buffer[i], 18, -1)
+        for i = moonConsole._Internal.pageSize, 1, -1 do
+            moonConsole._Internal.strBuffer[i] = {lines[#lines - numb], nil}
+            --if moonConsole._Internal.strBuffer[i] ~= nil then
+            --    --moonConsole._Internal.strBuffer[i] = string.gsub(moonConsole._Internal.strBuffer[i], "%[%d%d:%d%d:%d%d%.%d+%]%s+", "", 1)
+            --    moonConsole._Internal.strBuffer[i] = string.sub(moonConsole._Internal.strBuffer[i], 18, -1)
             --end
             numb = numb + 1
         end
@@ -354,27 +385,35 @@ function processAndRead(time, offset)
 end
 
 function processAndShow(bufferSize, buffer, gxtBuffer, color)
-    for i = 1, bufferSize, 1 do
-        setGxtEntry(gxtBuffer[i][1], buffer[i][1])
-        if buffer[i][1] ~= nil then
-            if buffer[i][2] == nil then
-                local tmp = string.match(string.sub(buffer[i][1], 20, -1), '[^)]+')
+    for i = 1, moonConsole._Internal.pageSize, 1 do
+        if moonConsole._Internal.pageSize ~= 5 then
+            for k, v in pairs(gxtBuffer) do
+                print(k, v, 'gxtbuffer')
+            end
+            for k, v in pairs(moonConsole._Internal.strBuffer) do
+                print(k, v, 'strbuffer')
+            end
+        end
+        setGxtEntry(gxtBuffer[i][1], moonConsole._Internal.strBuffer[i][1])
+        if moonConsole._Internal.strBuffer[i][1] ~= nil then
+            if moonConsole._Internal.strBuffer[i][2] == nil then
+                local tmp = string.match(string.sub(moonConsole._Internal.strBuffer[i][1], 20, -1), '[^)]+')
                 if tmp then
                     if tmp == 'error' then
                         gxtBuffer[i][2] = {255, 100, 100}
-                        buffer[i][2] = {255, 100, 100}
+                        moonConsole._Internal.strBuffer[i][2] = {255, 100, 100}
                     elseif tmp == 'script' then
                         gxtBuffer[i][2] = {255, 200, 100}
-                        buffer[i][2] = {255, 200, 100}
+                        moonConsole._Internal.strBuffer[i][2] = {255, 200, 100}
                     else
                         gxtBuffer[i][2] = {255, 255, 255}
-                        buffer[i][2] = {255, 255, 255}
+                        moonConsole._Internal.strBuffer[i][2] = {255, 255, 255}
                     end
                 end
             end
-                --if string.match(buffer[i], "%(error%)", 1) then
+                --if string.match(moonConsole._Internal.strBuffer[i], "%(error%)", 1) then
                 --    gxtBuffer[i][2] = {255, 100, 100}
-                --elseif string.match(buffer[i], "%(script%)", 1) then
+                --elseif string.match(moonConsole._Internal.strBuffer[i], "%(script%)", 1) then
                 --    gxtBuffer[i][2] = {255, 200, 100}
                 --else
                 --    gxtBuffer[i][2] = {255, 255, 255}
@@ -383,7 +422,8 @@ function processAndShow(bufferSize, buffer, gxtBuffer, color)
     end
     
     local y = 0.0
-    if reversed then
+    local bufferSize = moonConsole._Internal.pageSize
+    if moonConsole._Internal.reversed then
         y = #gxtBuffer * 17.5 - 17.5
         if #gxtBuffer > bufferSize then
             y = y - 17.5 -- Compensate the input gxt
@@ -395,7 +435,7 @@ function processAndShow(bufferSize, buffer, gxtBuffer, color)
 
     for i = 1, bufferSize do
         displayGxtFormatted(gxtBuffer[i][1], 10.0, y, gxtBuffer[i][2][1], gxtBuffer[i][2][2], gxtBuffer[i][2][3])
-        if reversed then
+        if moonConsole._Internal.reversed then
             y = y - 17.5
         else
             y = y + 17.5
